@@ -547,7 +547,9 @@ class GoSensorTest {
     sensorContext.fileSystem().add(goModFile);
     sensorContext.fileSystem().add(goFile);
 
-    sensor("S1135").execute(sensorContext);
+    var goProjectSensor = new GoProjectSensor();
+    sensorWithProjectSensor(goProjectSensor, "S1135").execute(sensorContext);
+    goProjectSensor.execute(sensorContext);
 
     verify(sensorContext).addTelemetryProperty("go.used_version", "1.23.4");
   }
@@ -573,7 +575,9 @@ class GoSensorTest {
     sensorContext.fileSystem().add(goModFile);
     sensorContext.fileSystem().add(goFile);
 
-    sensor("S1135").execute(sensorContext);
+    var goProjectSensor = new GoProjectSensor();
+    sensorWithProjectSensor(goProjectSensor, "S1135").execute(sensorContext);
+    goProjectSensor.execute(sensorContext);
 
     verify(sensorContext, never()).addTelemetryProperty(anyString(), anyString());
   }
@@ -595,7 +599,10 @@ class GoSensorTest {
 
     sensorContext.fileSystem().add(goModFile);
     sensorContext.fileSystem().add(goFile);
-    sensor("S1135").execute(sensorContext);
+
+    var goProjectSensor = new GoProjectSensor();
+    sensorWithProjectSensor(goProjectSensor, "S1135").execute(sensorContext);
+    goProjectSensor.execute(sensorContext);
 
     verify(sensorContext).addTelemetryProperty("go.used_version", "unknown");
   }
@@ -610,7 +617,10 @@ class GoSensorTest {
       baseDir, null, InputFile.Type.MAIN);
 
     sensorContext.fileSystem().add(goFile);
-    sensor("S1135").execute(sensorContext);
+
+    var goProjectSensor = new GoProjectSensor();
+    sensorWithProjectSensor(goProjectSensor, "S1135").execute(sensorContext);
+    goProjectSensor.execute(sensorContext);
 
     verify(sensorContext).addTelemetryProperty("go.used_version", "noGoModFile");
   }
@@ -662,8 +672,10 @@ class GoSensorTest {
     multiModContext.fileSystem().add(goFileB);
 
     when(fileLinesContextFactory.createFor(any(InputFile.class))).thenReturn(fileLinesContext);
+    var goProjectSensor = new GoProjectSensor();
     new GoSensor(checkFactory("S1135"), fileLinesContextFactory, new DefaultNoSonarFilter(),
-      new GoLanguage(new MapSettings().asConfig()), singleInstanceGoConverter).execute(multiModContext);
+      new GoLanguage(new MapSettings().asConfig()), singleInstanceGoConverter, goProjectSensor).execute(multiModContext);
+    goProjectSensor.execute(multiModContext);
 
     verify(multiModContext).addTelemetryProperty("go.used_version", "1.21;1.23");
   }
@@ -1217,7 +1229,8 @@ class GoSensorTest {
   void shouldSkipExecutionIfGoConverterNotInitialized() {
     var goConverterMock = mock(GoConverter.class);
     when(goConverterMock.isInitialized()).thenReturn(false);
-    var sensor = new GoSensor(checkFactory(), fileLinesContextFactory, new DefaultNoSonarFilter(), new GoLanguage(new MapSettings().asConfig()), goConverterMock);
+    var sensor = new GoSensor(checkFactory(), fileLinesContextFactory, new DefaultNoSonarFilter(), new GoLanguage(new MapSettings().asConfig()), goConverterMock,
+      new GoProjectSensor());
     context.setRuntime(SONAR_LINT_RUNTIME);
 
     sensor.execute(context);
@@ -1328,7 +1341,7 @@ class GoSensorTest {
     ActiveRules activeRules = rulesBuilder.build();
     CheckFactory checkFactory = new CheckFactory(activeRules);
     return new GoSensor(checkFactory, fileLinesContextFactory, new DefaultNoSonarFilter(),
-      new GoLanguage(new MapSettings().asConfig()), singleInstanceGoConverter) {
+      new GoLanguage(new MapSettings().asConfig()), singleInstanceGoConverter, new GoProjectSensor()) {
       @Override
       protected GoChecks mainAndTestChecks() {
         return initializeChecks(mainAndTestChecks);
@@ -1348,7 +1361,12 @@ class GoSensorTest {
 
   private GoSensor sensor(CheckFactory checkFactory) {
     return new GoSensor(checkFactory, fileLinesContextFactory, new DefaultNoSonarFilter(),
-      new GoLanguage(new MapSettings().asConfig()), singleInstanceGoConverter);
+      new GoLanguage(new MapSettings().asConfig()), singleInstanceGoConverter, new GoProjectSensor());
+  }
+
+  private GoSensor sensorWithProjectSensor(GoProjectSensor goProjectSensor, String... ruleKeys) {
+    return new GoSensor(checkFactory(ruleKeys), fileLinesContextFactory, new DefaultNoSonarFilter(),
+      new GoLanguage(new MapSettings().asConfig()), singleInstanceGoConverter, goProjectSensor);
   }
 
   protected CheckFactory checkFactory(String... ruleKeys) {

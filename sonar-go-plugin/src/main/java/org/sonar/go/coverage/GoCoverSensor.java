@@ -39,6 +39,7 @@ import org.sonar.api.config.Configuration;
 import org.sonar.api.utils.Version;
 import org.sonar.api.utils.WildcardPattern;
 import org.sonar.go.plugin.GoModFileFinder;
+import org.sonar.go.plugin.GoProjectSensor;
 import org.sonar.plugins.go.api.checks.GoModFileData;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -59,6 +60,11 @@ public class GoCoverSensor implements Sensor {
   private static final int MAX_FILES_WALK_DEPTH = 999;
 
   private GoCoverageStorage coverageStorage = new GoCoverageStorageImpl();
+  private final GoProjectSensor goProjectSensor;
+
+  public GoCoverSensor(GoProjectSensor goProjectSensor) {
+    this.goProjectSensor = goProjectSensor;
+  }
 
   @Override
   public void describe(SensorDescriptor descriptor) {
@@ -166,7 +172,7 @@ public class GoCoverSensor implements Sensor {
     } catch (IOException e) {
       LOG.warn("Failed parsing coverage info for file {}: {}", reportPath, e.getMessage());
     }
-    saveFileResolutionStatistic(context, statistics);
+    goProjectSensor.addCoverageStatistics(statistics);
   }
 
   private static Set<GoModFileData> findAllGoModFileData(SensorContext context) throws IOException {
@@ -183,19 +189,6 @@ public class GoCoverSensor implements Sensor {
       coverage.add(CoverageStat.parseLine(lineNumber, line));
     } catch (IllegalArgumentException e) {
       LOG.debug("Ignoring line in coverage report: {}.", e.getMessage(), e);
-    }
-  }
-
-  private static void saveFileResolutionStatistic(SensorContext context, FileResolutionStatistics statistics) {
-    var isTelemetrySupported = context.runtime().getApiVersion().isGreaterThanOrEqual(TELEMETRY_SUPPORTED_API_VERSION);
-    if (isTelemetrySupported) {
-      context.addTelemetryProperty("go.coverage_absolute_path", Integer.toString(statistics.absolutePath()));
-      context.addTelemetryProperty("go.coverage_relative_no_module_in_go_mod_dir", Integer.toString(statistics.relativeNoModuleInGoModDir()));
-      context.addTelemetryProperty("go.coverage_absolute_no_module_in_report_path", Integer.toString(statistics.absoluteNoModuleInReportPath()));
-      context.addTelemetryProperty("go.coverage_relative_path", Integer.toString(statistics.relativePath()));
-      context.addTelemetryProperty("go.coverage_relative_no_module_in_report_path", Integer.toString(statistics.relativeNoModuleInReportPath()));
-      context.addTelemetryProperty("go.coverage_relative_sub_paths", Integer.toString(statistics.relativeSubPaths()));
-      context.addTelemetryProperty("go.coverage_unresolved", Integer.toString(statistics.unresolved()));
     }
   }
 

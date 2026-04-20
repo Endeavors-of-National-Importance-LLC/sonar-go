@@ -80,4 +80,14 @@ public class FileResolutionStatistics {
   public void incrementUnresolved() {
     this.unresolved++;
   }
+
+  public void accumulate(FileResolutionStatistics other) {
+    this.absolutePath += other.absolutePath;
+    this.relativeNoModuleInGoModDir += other.relativeNoModuleInGoModDir;
+    this.absoluteNoModuleInReportPath += other.absoluteNoModuleInReportPath;
+    this.relativePath += other.relativePath;
+    this.relativeNoModuleInReportPath += other.relativeNoModuleInReportPath;
+    this.relativeSubPaths += other.relativeSubPaths;
+    this.unresolved += other.unresolved;
+  }
 }

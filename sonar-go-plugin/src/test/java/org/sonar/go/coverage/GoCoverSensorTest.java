@@ -42,6 +42,7 @@ import org.sonar.api.config.internal.MapSettings;
 import org.sonar.api.internal.SonarRuntimeImpl;
 import org.sonar.api.testfixtures.log.LogTesterJUnit5;
 import org.sonar.api.utils.Version;
+import org.sonar.go.plugin.GoProjectSensor;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -60,7 +61,7 @@ class GoCoverSensorTest {
   @Test
   void shouldTestDescriptor() {
     DefaultSensorDescriptor sensorDescriptor = new DefaultSensorDescriptor();
-    GoCoverSensor coverSensor = new GoCoverSensor();
+    GoCoverSensor coverSensor = new GoCoverSensor(new GoProjectSensor());
     coverSensor.describe(sensorDescriptor);
     assertThat(sensorDescriptor.name()).isEqualTo("Go Cover sensor for Go coverage");
   }
@@ -69,7 +70,7 @@ class GoCoverSensorTest {
   void shouldFailWhenCoverageFileDoesntExit() {
     SensorContextTester context = SensorContextTester.create(COVERAGE_DIR);
     context.settings().setProperty("sonar.go.coverage.reportPaths", "invalid-coverage-path.out");
-    GoCoverSensor coverSensor = new GoCoverSensor();
+    GoCoverSensor coverSensor = new GoCoverSensor(new GoProjectSensor());
     coverSensor.execute(context);
     assertThat(logTester.logs(Level.ERROR)).isEmpty();
     assertThat(logTester.logs(Level.WARN))
@@ -153,7 +154,7 @@ class GoCoverSensorTest {
     String coverPath = "/home/paul/go/src/github.com/SonarSource/slang/sonar-go-plugin/src/test/resources/coverage/cover_big.go";
     AtomicInteger linesCount = new AtomicInteger();
 
-    GoCoverSensor sensor = new GoCoverSensor();
+    GoCoverSensor sensor = new GoCoverSensor(new GoProjectSensor());
     sensor.setCoverageStorage((sensorContext, coverage, goModFileData, reportPath, statistics) -> {
       if (!coverage.fileMap.isEmpty()) {
         linesCount.getAndAdd(coverage.fileMap.get(coverPath).size());
@@ -244,7 +245,7 @@ class GoCoverSensorTest {
       "test1" + File.separator + "coverage.out, coverage.relative.out");
     Path baseDir = COVERAGE_DIR.toAbsolutePath();
     GoPathContext goContext = new GoPathContext(File.separatorChar, File.pathSeparator, baseDir.toString());
-    GoCoverSensor sensor = new GoCoverSensor();
+    GoCoverSensor sensor = new GoCoverSensor(new GoProjectSensor());
 
     sensor.execute(context, goContext);
 
@@ -311,7 +312,7 @@ class GoCoverSensorTest {
     when(brokenInputFile.contents()).thenThrow(new IOException("BOOM"));
     context.fileSystem().add(brokenInputFile);
     GoPathContext goContext = new GoPathContext(File.separatorChar, File.pathSeparator, "");
-    GoCoverSensor sensor = new GoCoverSensor();
+    GoCoverSensor sensor = new GoCoverSensor(new GoProjectSensor());
     sensor.execute(context, goContext);
 
     assertThat(logTester.logs(Level.WARN)).contains("Failed saving coverage info for file: cover.go");
@@ -331,7 +332,7 @@ class GoCoverSensorTest {
     addFile(context, baseDir, "greetings_test.go");
 
     GoPathContext goContext = new GoPathContext(File.separatorChar, File.pathSeparator, "");
-    GoCoverSensor sensor = new GoCoverSensor();
+    GoCoverSensor sensor = new GoCoverSensor(new GoProjectSensor());
     sensor.execute(context, goContext);
 
     assertThat(logTester.logs(Level.DEBUG)).contains(
@@ -354,7 +355,7 @@ class GoCoverSensorTest {
     addFile(context, baseDir, "greetings/greetings_test.go");
 
     GoPathContext goContext = new GoPathContext(File.separatorChar, File.pathSeparator, "");
-    GoCoverSensor sensor = new GoCoverSensor();
+    GoCoverSensor sensor = new GoCoverSensor(new GoProjectSensor());
     sensor.execute(context, goContext);
 
     assertThat(logTester.logs(Level.DEBUG)).contains(
@@ -379,7 +380,7 @@ class GoCoverSensorTest {
     addFile(context, baseDir, "internal/main_test.go");
 
     GoPathContext goContext = new GoPathContext(File.separatorChar, File.pathSeparator, "");
-    GoCoverSensor sensor = new GoCoverSensor();
+    GoCoverSensor sensor = new GoCoverSensor(new GoProjectSensor());
     sensor.execute(context, goContext);
 
     assertThat(logTester.logs(Level.WARN)).isEmpty();
@@ -406,7 +407,7 @@ class GoCoverSensorTest {
     addFile(context, baseDir, "internal/main_test.go");
 
     GoPathContext goContext = new GoPathContext(File.separatorChar, File.pathSeparator, "");
-    GoCoverSensor sensor = new GoCoverSensor();
+    GoCoverSensor sensor = new GoCoverSensor(new GoProjectSensor());
     sensor.execute(context, goContext);
 
     assertThat(logTester.logs(Level.WARN)).isEmpty();
@@ -436,8 +437,10 @@ class GoCoverSensorTest {
       .build());
 
     GoPathContext goContext = new GoPathContext(File.separatorChar, File.pathSeparator, "");
-    GoCoverSensor sensor = new GoCoverSensor();
+    var goProjectSensor = new GoProjectSensor();
+    GoCoverSensor sensor = new GoCoverSensor(goProjectSensor);
     sensor.execute(context, goContext);
+    goProjectSensor.execute(context);
 
     verify(context).addTelemetryProperty("go.coverage_absolute_path", "0");
     verify(context).addTelemetryProperty("go.coverage_relative_no_module_in_go_mod_dir", "0");
@@ -467,8 +470,10 @@ class GoCoverSensorTest {
       .build());
 
     GoPathContext goContext = new GoPathContext(File.separatorChar, File.pathSeparator, "");
-    GoCoverSensor sensor = new GoCoverSensor();
+    var goProjectSensor = new GoProjectSensor();
+    GoCoverSensor sensor = new GoCoverSensor(goProjectSensor);
     sensor.execute(context, goContext);
+    goProjectSensor.execute(context);
 
     verify(context, never()).addTelemetryProperty("go.coverage_absolute_path", "0");
     verify(context, never()).addTelemetryProperty("go.coverage_relative_no_module_in_go_mod_dir", "0");
@@ -496,8 +501,10 @@ class GoCoverSensorTest {
     addFile(context, baseDir, "internal/main_test.go");
 
     GoPathContext goContext = new GoPathContext(File.separatorChar, File.pathSeparator, "");
-    GoCoverSensor sensor = new GoCoverSensor();
+    var goProjectSensor = new GoProjectSensor();
+    GoCoverSensor sensor = new GoCoverSensor(goProjectSensor);
     sensor.execute(context, goContext);
+    goProjectSensor.execute(context);
 
     verify(context).addTelemetryProperty("go.coverage_relative_no_module_in_go_mod_dir", "2");
     verify(context).addTelemetryProperty("go.coverage_absolute_path", "0");
@@ -523,8 +530,10 @@ class GoCoverSensorTest {
     addFile(context, baseDir, "internal/main_test.go");
 
     GoPathContext goContext = new GoPathContext(File.separatorChar, File.pathSeparator, "");
-    GoCoverSensor sensor = new GoCoverSensor();
+    var goProjectSensor = new GoProjectSensor();
+    GoCoverSensor sensor = new GoCoverSensor(goProjectSensor);
     sensor.execute(context, goContext);
+    goProjectSensor.execute(context);
 
     verify(context).addTelemetryProperty("go.coverage_relative_sub_paths", "2");
     verify(context).addTelemetryProperty("go.coverage_absolute_path", "0");
@@ -560,14 +569,14 @@ class GoCoverSensorTest {
       .setContents(content)
       .build());
     GoPathContext goContext = new GoPathContext(File.separatorChar, File.pathSeparator, "");
-    GoCoverSensor sensor = new GoCoverSensor();
+    GoCoverSensor sensor = new GoCoverSensor(new GoProjectSensor());
     sensor.execute(context, goContext);
     return context;
   }
 
   private void assertCoverGo(Path coverageFile, GoPathContext goContext, String absolutePath) {
     SensorContextTester context = SensorContextTester.create(COVERAGE_DIR);
-    GoCoverSensor sensor = new GoCoverSensor();
+    GoCoverSensor sensor = new GoCoverSensor(new GoProjectSensor());
 
     sensor.setCoverageStorage((sensorContext, coverage, goModFileData, reportPath, statistics) -> {
       assertThat(coverage.fileMap.keySet()).containsExactlyInAnyOrder(absolutePath);

@@ -53,9 +53,6 @@ import org.sonar.plugins.go.api.TextPointer;
 import org.sonar.plugins.go.api.Tree;
 import org.sonar.plugins.go.api.TreeOrError;
 import org.sonar.plugins.go.api.VariableDeclarationTree;
-import org.sonar.plugins.go.api.checks.GoVersion;
-
-import static org.sonar.go.coverage.GoCoverSensor.TELEMETRY_SUPPORTED_API_VERSION;
 
 public class GoSensor implements Sensor {
 
@@ -75,19 +72,21 @@ public class GoSensor implements Sensor {
   private final Language language;
   private final ASTConverter goConverter;
   private final InputFileDiscovery inputFileDiscovery;
+  private final GoProjectSensor goProjectSensor;
 
   protected DurationStatistics durationStatistics;
   protected MemoryMonitor memoryMonitor;
   protected final CheckFactory checkFactory;
 
   public GoSensor(CheckFactory checkFactory, FileLinesContextFactory fileLinesContextFactory,
-    NoSonarFilter noSonarFilter, GoLanguage language, GoConverter goConverter) {
+    NoSonarFilter noSonarFilter, GoLanguage language, GoConverter goConverter, GoProjectSensor goProjectSensor) {
     this.checkFactory = checkFactory;
     this.noSonarFilter = noSonarFilter;
     this.fileLinesContextFactory = fileLinesContextFactory;
     this.language = language;
     this.goConverter = goConverter;
     this.inputFileDiscovery = new InputFileDiscovery(language);
+    this.goProjectSensor = goProjectSensor;
   }
 
   @Override
@@ -125,7 +124,7 @@ public class GoSensor implements Sensor {
     boolean success = false;
     var converter = ASTConverterValidation.wrap(goConverter, sensorContext.config());
     var goModFileDataStore = new GoModFileAnalyzer(sensorContext).analyzeGoModFiles();
-    collectTelemetry(sensorContext, goModFileDataStore);
+    goProjectSensor.addGoVersions(goModFileDataStore.collectGoVersions());
     try {
       var visitors = visitors(sensorContext, durationStatistics, goModFileDataStore);
       success = analyseFiles(converter, sensorContext, inputFileContexts, goProgressReport, visitors, durationStatistics, goModFileDataStore);
@@ -207,24 +206,6 @@ public class GoSensor implements Sensor {
       goProgressReport.nextFolder();
     }
     return true;
-  }
-
-  private static void collectTelemetry(SensorContext sensorContext, GoModFileDataStore goModFileDataStore) {
-    if (!sensorContext.runtime().getApiVersion().isGreaterThanOrEqual(TELEMETRY_SUPPORTED_API_VERSION)) {
-      return;
-    }
-    var goVersions = goModFileDataStore.collectGoVersions();
-    String usedVersion;
-    if (goVersions.isEmpty()) {
-      usedVersion = "noGoModFile";
-    } else {
-      usedVersion = goVersions.stream()
-        .sorted()
-        .map(GoVersion::toString)
-        .distinct()
-        .collect(Collectors.joining(";"));
-    }
-    sensorContext.addTelemetryProperty("go.used_version", usedVersion);
   }
 
   protected void beforeAnalyzeFile(SensorContext sensorContext, List<GoFolder> inputFilesByFolder, GoModFileDataStore goModFileDataStore) {
