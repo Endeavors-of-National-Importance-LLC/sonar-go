@@ -82,6 +82,12 @@ public class GoConverter implements ASTConverter {
     return result;
   }
 
+  public void setGcExportDataDir(String gcExportDataDir) {
+    if (command != null) {
+      command.setGcExportDataDir(gcExportDataDir);
+    }
+  }
+
   @Override
   public void debugTypeCheck() {
     command.debugTypeCheck();

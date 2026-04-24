@@ -33,9 +33,15 @@ import org.sonar.plugins.go.api.checks.GoVersion;
 public class GoModFileDataStore {
   private Node root = new Node();
   private String rootPath = "";
+  @Nullable
+  private GoVersion externalGoVersion;
 
   String getRootPath() {
     return rootPath;
+  }
+
+  public void setExternalGoVersion(GoVersion version) {
+    this.externalGoVersion = version;
   }
 
   public void addGoModFile(URI uriGoMod, GoModFileData goModFileData) {
@@ -63,6 +69,14 @@ public class GoModFileDataStore {
   }
 
   public GoModFileData retrieveClosestGoModFileData(String path) {
+    var data = retrieveClosestGoModFileDataInternal(path);
+    if (externalGoVersion != null) {
+      return new GoModFileData(data.moduleName(), externalGoVersion, data.replacedModules(), data.goModFilePath());
+    }
+    return data;
+  }
+
+  private GoModFileData retrieveClosestGoModFileDataInternal(String path) {
     if (!path.startsWith(rootPath)) {
       return GoModFileData.UNKNOWN_DATA;
     }
@@ -88,6 +102,9 @@ public class GoModFileDataStore {
   }
 
   public Set<GoVersion> collectGoVersions() {
+    if (externalGoVersion != null) {
+      return Set.of(externalGoVersion);
+    }
     return flatNodes(root)
       .map(n -> n.goModFileData)
       .filter(data -> data != null && data != GoModFileData.UNKNOWN_DATA)

@@ -443,6 +443,59 @@ class GoModFileAnalyzerTest {
     assertThat(goModFileDataStore.getRootPath()).endsWith("/root");
   }
 
+  @Test
+  void shouldIgnoreGoVersionPropertyWhenValueIsUnrecognized() {
+    sensorContext.settings().setProperty(GoModFileAnalyzer.GO_VERSION_PROPERTY, "not-a-version");
+
+    var dataStore = goModFileAnalyzer.analyzeGoModFiles();
+
+    var result = dataStore.retrieveClosestGoModFileData("/any/path");
+    assertThat(result.goVersion()).isEqualTo(GoVersion.UNKNOWN_VERSION);
+    assertThat(logTester.logs(Level.WARN)).contains(
+      "Property 'sonar.go.internal.source.version' has an unrecognized value 'not-a-version'; it will be ignored.");
+    assertThat(logTester.logs(Level.INFO)).doesNotContain("Using Go version from property");
+  }
+
+  @Test
+  void shouldApplyGoVersionPropertyWhenNoGoModFileExists() {
+    sensorContext.settings().setProperty(GoModFileAnalyzer.GO_VERSION_PROPERTY, "1.21");
+
+    var dataStore = goModFileAnalyzer.analyzeGoModFiles();
+
+    var result = dataStore.retrieveClosestGoModFileData("/any/path");
+    assertThat(result.goVersion()).isEqualTo(GoVersion.parse("1.21"));
+    assertThat(logTester.logs()).contains(
+      "Using Go version from property 'sonar.go.internal.source.version': 1.21",
+      "Expected at least one go.mod file, but found none.");
+  }
+
+  @Test
+  void shouldApplyGoVersionPropertyAsFallbackWhenGoModHasNoVersion() {
+    sensorContext.settings().setProperty(GoModFileAnalyzer.GO_VERSION_PROPERTY, "1.21");
+    InputFile goModFile = createInputFile("go.mod", "module myModule\n");
+    sensorContext.fileSystem().add(goModFile);
+
+    var goModFileData = parseSingleGoModFile();
+
+    assertThat(goModFileData.goVersion()).isEqualTo(GoVersion.parse("1.21"));
+    assertThat(logTester.logs(Level.WARN)).contains(
+      "Property 'sonar.go.internal.source.version' is set but go.mod files were also found; the property will take precedence.");
+    assertThat(logTester.logs(Level.INFO)).contains("Using Go version from property 'sonar.go.internal.source.version': 1.21");
+  }
+
+  @Test
+  void shouldOverrideGoModVersionWithGoVersionProperty() {
+    sensorContext.settings().setProperty(GoModFileAnalyzer.GO_VERSION_PROPERTY, "1.21");
+    InputFile goModFile = createInputFile("go.mod", "module myModule\n\ngo 1.20\n");
+    sensorContext.fileSystem().add(goModFile);
+
+    var goModFileData = parseSingleGoModFile();
+
+    assertThat(goModFileData.goVersion()).isEqualTo(GoVersion.parse("1.21"));
+    assertThat(logTester.logs(Level.WARN)).contains(
+      "Property 'sonar.go.internal.source.version' is set but go.mod files were also found; the property will take precedence.");
+  }
+
   private GoModFileData parseSingleGoModFile() {
     var goModFilesData = goModFileAnalyzer.analyzeGoModFiles();
     var file = sensorContext.fileSystem().files(f -> true).iterator().next();

@@ -59,6 +59,9 @@ public class GoModFileAnalyzer {
   private static final Pattern MULTIPLE_REPLACE_PATTERN = Pattern.compile("^replace\\s++\\(\\s*+$");
   private static final Pattern REPLACE_SPEC_PATTERN = Pattern.compile(REPLACE_SPEC);
 
+  // This property is expected to be set only in A3S context
+  static final String GO_VERSION_PROPERTY = "sonar.go.internal.source.version";
+
   private final SensorContext sensorContext;
 
   public GoModFileAnalyzer(SensorContext sensorContext) {
@@ -74,22 +77,39 @@ public class GoModFileAnalyzer {
     }
 
     var modFiles = GoModFileFinder.findGoModFiles(sensorContext);
+    var goModFileDataStore = new GoModFileDataStore();
+
     if (modFiles.isEmpty()) {
       LOG.debug("Expected at least one go.mod file, but found none.");
-      return new GoModFileDataStore();
+    } else {
+      for (var goModFile : modFiles) {
+        try {
+          var goModFileData = analyzeGoModFileContent(goModFile.contents(), goModFile.toString());
+          goModFileDataStore.addGoModFile(goModFile.uri(), goModFileData);
+        } catch (IOException e) {
+          LOG.debug("Failed to read go.mod file: {}", goModFile, e);
+        }
+      }
+      goModFileDataStore.complete();
     }
 
-    var goModFileDataStore = new GoModFileDataStore();
-    for (var goModFile : modFiles) {
-      try {
-        var goModFileData = analyzeGoModFileContent(goModFile.contents(), goModFile.toString());
-        goModFileDataStore.addGoModFile(goModFile.uri(), goModFileData);
-      } catch (IOException e) {
-        LOG.debug("Failed to read go.mod file: {}", goModFile, e);
-      }
-    }
-    goModFileDataStore.complete();
+    applyGoVersionProperty(goModFileDataStore, !modFiles.isEmpty());
     return goModFileDataStore;
+  }
+
+  private void applyGoVersionProperty(GoModFileDataStore dataStore, boolean goModFilesFound) {
+    sensorContext.config().get(GO_VERSION_PROPERTY).ifPresent(version -> {
+      if (goModFilesFound) {
+        LOG.warn("Property '{}' is set but go.mod files were also found; the property will take precedence.", GO_VERSION_PROPERTY);
+      }
+      var parsedVersion = GoVersion.parse(version);
+      if (parsedVersion.isUnknownVersion()) {
+        LOG.warn("Property '{}' has an unrecognized value '{}'; it will be ignored.", GO_VERSION_PROPERTY, version);
+        return;
+      }
+      LOG.info("Using Go version from property '{}': {}", GO_VERSION_PROPERTY, version);
+      dataStore.setExternalGoVersion(parsedVersion);
+    });
   }
 
   /**

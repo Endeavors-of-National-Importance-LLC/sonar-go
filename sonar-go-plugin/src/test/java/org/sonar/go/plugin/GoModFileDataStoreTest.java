@@ -17,8 +17,10 @@
 package org.sonar.go.plugin;
 
 import java.net.URI;
+import java.util.Collections;
 import org.junit.jupiter.api.Test;
 import org.sonar.plugins.go.api.checks.GoModFileData;
+import org.sonar.plugins.go.api.checks.GoVersion;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -93,5 +95,56 @@ class GoModFileDataStoreTest {
     assertThat(store.retrieveClosestGoModFileData(".")).isEqualTo(GoModFileData.UNKNOWN_DATA);
     assertThat(store.retrieveClosestGoModFileData("/path")).isEqualTo(GoModFileData.UNKNOWN_DATA);
     assertThat(store.retrieveClosestGoModFileData("/path/file.go")).isEqualTo(GoModFileData.UNKNOWN_DATA);
+  }
+
+  @Test
+  void shouldUseExternalGoVersionWhenStoredVersionIsUnknown() {
+    var externalVersion = GoVersion.parse("1.21");
+    var dataWithUnknownVersion = new GoModFileData("mymodule", GoVersion.UNKNOWN_VERSION, Collections.emptyList(), "/go.mod");
+    GoModFileDataStore store = new GoModFileDataStore();
+    store.addGoModFile(URI.create("/go.mod"), dataWithUnknownVersion);
+    store.complete();
+    store.setExternalGoVersion(externalVersion);
+
+    var result = store.retrieveClosestGoModFileData("/file.go");
+    assertThat(result.goVersion()).isEqualTo(externalVersion);
+    assertThat(result.moduleName()).isEqualTo("mymodule");
+  }
+
+  @Test
+  void shouldOverrideKnownVersionWithExternalGoVersion() {
+    var knownVersion = GoVersion.parse("1.20");
+    var externalVersion = GoVersion.parse("1.21");
+    var dataWithKnownVersion = new GoModFileData("mymodule", knownVersion, Collections.emptyList(), "/go.mod");
+    GoModFileDataStore store = new GoModFileDataStore();
+    store.addGoModFile(URI.create("/go.mod"), dataWithKnownVersion);
+    store.complete();
+    store.setExternalGoVersion(externalVersion);
+
+    var result = store.retrieveClosestGoModFileData("/file.go");
+    assertThat(result.goVersion()).isEqualTo(externalVersion);
+  }
+
+  @Test
+  void shouldReturnExternalGoVersionInCollectGoVersions() {
+    var externalVersion = GoVersion.parse("1.21");
+    GoModFileDataStore store = new GoModFileDataStore();
+    store.complete();
+    store.setExternalGoVersion(externalVersion);
+
+    assertThat(store.collectGoVersions()).containsExactly(externalVersion);
+  }
+
+  @Test
+  void shouldReturnOnlyExternalGoVersionInCollectGoVersionsWhenGoModFilesPresent() {
+    var knownVersion = GoVersion.parse("1.20");
+    var externalVersion = GoVersion.parse("1.21");
+    var dataWithKnownVersion = new GoModFileData("mymodule", knownVersion, Collections.emptyList(), "/go.mod");
+    GoModFileDataStore store = new GoModFileDataStore();
+    store.addGoModFile(URI.create("/go.mod"), dataWithKnownVersion);
+    store.complete();
+    store.setExternalGoVersion(externalVersion);
+
+    assertThat(store.collectGoVersions()).containsExactly(externalVersion);
   }
 }
