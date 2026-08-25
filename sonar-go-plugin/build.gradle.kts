@@ -99,7 +99,7 @@ tasks.jar {
                 "Sonar-Version" to "6.7",
                 "SonarLint-Supported" to "true",
                 "Version" to "${project.version}",
-                "Jre-Min-Version" to "11"
+                "Jre-Min-Version" to java.sourceCompatibility.majorVersion
             )
         )
     }
