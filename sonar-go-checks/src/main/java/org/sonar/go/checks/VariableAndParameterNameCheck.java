@@ -16,6 +16,8 @@
  */
 package org.sonar.go.checks;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.regex.Pattern;
 import org.sonar.check.Rule;
 import org.sonar.check.RuleProperty;
@@ -24,11 +26,14 @@ import org.sonar.plugins.go.api.IdentifierTree;
 import org.sonar.plugins.go.api.ParameterTree;
 import org.sonar.plugins.go.api.VariableDeclarationTree;
 import org.sonar.plugins.go.api.checks.CheckContext;
+import org.sonar.plugins.go.api.checks.GeneratedCodeDetector;
 import org.sonar.plugins.go.api.checks.GoCheck;
 import org.sonar.plugins.go.api.checks.InitContext;
 
 @Rule(key = "S117")
 public class VariableAndParameterNameCheck implements GoCheck {
+
+  private final Map<String, Boolean> generatedFiles = new HashMap<>();
 
   @RuleProperty(
     key = "format",
@@ -38,10 +43,11 @@ public class VariableAndParameterNameCheck implements GoCheck {
 
   @Override
   public void initialize(InitContext init) {
+    generatedFiles.clear();
     var pattern = Pattern.compile(format);
 
     init.register(VariableDeclarationTree.class, (ctx, tree) -> {
-      if (!isTemplGeneratedFile(ctx.filename()) && ctx.ancestors().stream().anyMatch(FunctionDeclarationTree.class::isInstance)) {
+      if (ctx.ancestors().stream().anyMatch(FunctionDeclarationTree.class::isInstance) && !isGeneratedFile(ctx)) {
         for (var identifier : tree.identifiers()) {
           check(pattern, ctx, identifier, "local variable");
         }
@@ -49,7 +55,7 @@ public class VariableAndParameterNameCheck implements GoCheck {
     });
 
     init.register(FunctionDeclarationTree.class, (ctx, tree) -> {
-      if (!isTemplGeneratedFile(ctx.filename())) {
+      if (!isGeneratedFile(ctx)) {
         tree.formalParameters().stream()
           .filter(ParameterTree.class::isInstance)
           .map(ParameterTree.class::cast)
@@ -65,8 +71,18 @@ public class VariableAndParameterNameCheck implements GoCheck {
     }
   }
 
-  private static boolean isTemplGeneratedFile(String fileName) {
-    return fileName.endsWith("_templ.go");
+  /**
+   * Determines whether this rule should ignore the current generated source file.
+   * @param context the current check context
+   * @return {@code true} when the current file is generated
+   */
+  boolean isGeneratedFile(CheckContext context) {
+    if (context.filename().endsWith("_templ.go")) {
+      return true;
+    }
+    return generatedFiles.computeIfAbsent(
+      context.inputFile().key(),
+      ignored -> GeneratedCodeDetector.isGenerated(context.fileContent()));
   }
 
 }
