@@ -155,4 +155,49 @@ class TreeUtilsTest {
     var result = TreeUtils.retrieveLastIdentifier(integerLiteral);
     assertThat(result).isEmpty();
   }
+
+  @Test
+  void shouldRetrieveReceiverOfFieldAssignment() {
+    var receiver = TreeCreationUtils.identifier(mock(TreeMetaData.class), "server");
+    var field = TreeCreationUtils.identifier(mock(TreeMetaData.class), "Host");
+    var value = TreeCreationUtils.literal("\"acme.com\"");
+    var assignment = TreeCreationUtils.assignment(TreeCreationUtils.memberSelect(receiver, field), value);
+
+    assertThat(TreeUtils.receiverOfFieldAssignment(assignment, "Host", assigned -> assigned == value)).containsSame(receiver);
+  }
+
+  @Test
+  void shouldNotRetrieveReceiverOfFieldAssignmentOfAnotherField() {
+    var receiver = TreeCreationUtils.identifier(mock(TreeMetaData.class), "server");
+    var field = TreeCreationUtils.identifier(mock(TreeMetaData.class), "Port");
+    var value = TreeCreationUtils.literal("\"acme.com\"");
+    var assignment = TreeCreationUtils.assignment(TreeCreationUtils.memberSelect(receiver, field), value);
+
+    assertThat(TreeUtils.receiverOfFieldAssignment(assignment, "Host", assigned -> true)).isEmpty();
+  }
+
+  @Test
+  void shouldNotRetrieveReceiverOfFieldAssignmentWhenValueDoesNotMatch() {
+    var receiver = TreeCreationUtils.identifier(mock(TreeMetaData.class), "server");
+    var field = TreeCreationUtils.identifier(mock(TreeMetaData.class), "Host");
+    var assignment = TreeCreationUtils.assignment(TreeCreationUtils.memberSelect(receiver, field), TreeCreationUtils.literal("\"acme.com\""));
+
+    assertThat(TreeUtils.receiverOfFieldAssignment(assignment, "Host", assigned -> false)).isEmpty();
+  }
+
+  @Test
+  void shouldNotRetrieveReceiverOfAssignmentToSomethingElseThanAField() {
+    var assignment = TreeCreationUtils.assignment(TreeCreationUtils.identifier(mock(TreeMetaData.class), "server"), TreeCreationUtils.literal("\"acme.com\""));
+
+    assertThat(TreeUtils.receiverOfFieldAssignment(assignment, "Host", assigned -> true)).isEmpty();
+  }
+
+  @Test
+  void shouldNotRetrieveReceiverOfFieldAssignmentOfAnotherType() {
+    var receiver = TreeCreationUtils.identifier(mock(TreeMetaData.class), "server");
+    var field = TreeCreationUtils.identifier(mock(TreeMetaData.class), "Host");
+    var assignment = TreeCreationUtils.assignment(TreeCreationUtils.memberSelect(receiver, field), TreeCreationUtils.literal("\"acme.com\""));
+
+    assertThat(TreeUtils.receiverOfFieldAssignment(assignment, "some/package.Server", "Host", assigned -> true)).isEmpty();
+  }
 }

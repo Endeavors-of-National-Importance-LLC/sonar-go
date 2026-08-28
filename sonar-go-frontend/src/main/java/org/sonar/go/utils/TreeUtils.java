@@ -20,6 +20,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
+import org.sonar.plugins.go.api.AssignmentExpressionTree;
 import org.sonar.plugins.go.api.FunctionInvocationTree;
 import org.sonar.plugins.go.api.IdentifierTree;
 import org.sonar.plugins.go.api.MemberSelectTree;
@@ -68,6 +70,33 @@ public class TreeUtils {
     } else {
       return Optional.empty();
     }
+  }
+
+  /**
+   * Matches an assignment to the field {@code fieldName} of a variable, e.g. {@code server.Host = "acme.com"}, whose
+   * assigned value satisfies {@code assignedValuePredicate}.
+   *
+   * @return the variable the field belongs to, e.g. {@code server}, or empty when the assignment does not match
+   */
+  public static Optional<IdentifierTree> receiverOfFieldAssignment(AssignmentExpressionTree assignment, String fieldName,
+    Predicate<Tree> assignedValuePredicate) {
+    return receiverOfFieldAssignment(assignment, null, fieldName, assignedValuePredicate);
+  }
+
+  /**
+   * Same as {@link #receiverOfFieldAssignment(AssignmentExpressionTree, String, Predicate)}, additionally requiring the
+   * variable to be of {@code type}, ignoring pointers. A {@code null} type accepts any variable.
+   */
+  public static Optional<IdentifierTree> receiverOfFieldAssignment(AssignmentExpressionTree assignment, @Nullable String type,
+    String fieldName, Predicate<Tree> assignedValuePredicate) {
+    if (assignment.leftHandSide() instanceof MemberSelectTree memberSelect &&
+      memberSelect.expression() instanceof IdentifierTree receiver &&
+      memberSelect.identifier().name().equals(fieldName) &&
+      (type == null || ExpressionUtils.hasTypeIgnoringStar(receiver, type)) &&
+      assignedValuePredicate.test(assignment.statementOrExpression())) {
+      return Optional.of(receiver);
+    }
+    return Optional.empty();
   }
 
   public static Optional<IdentifierTree> retrieveLastIdentifier(Tree tree) {

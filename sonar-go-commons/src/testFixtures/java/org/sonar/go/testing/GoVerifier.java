@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -128,7 +129,8 @@ public class GoVerifier {
     private final String filename;
     private final String testFileContent;
     private final boolean testFile;
-    private Consumer<Tree> onLeave;
+    // A check can register several on-leave consumers, e.g. one per part of a rule, like the production visitor allows.
+    private final List<Consumer<Tree>> onLeaveConsumers = new ArrayList<>();
 
     public TestContext(SingleFileVerifier verifier, InputFile inputFile, String filename, String testFileContent, GoModFileData goModFileData) {
       this(verifier, inputFile, filename, testFileContent, goModFileData, false);
@@ -147,9 +149,7 @@ public class GoVerifier {
 
     public void scan(@Nullable Tree root) {
       visitor.scan(this, root);
-      if (onLeave != null) {
-        onLeave.accept(root);
-      }
+      onLeaveConsumers.forEach(onLeave -> onLeave.accept(root));
     }
 
     @Override
@@ -159,7 +159,7 @@ public class GoVerifier {
 
     @Override
     public void registerOnLeave(BiConsumer<CheckContext, Tree> visitor) {
-      this.onLeave = tree -> visitor.accept(this, tree);
+      onLeaveConsumers.add(tree -> visitor.accept(this, tree));
     }
 
     @Override
