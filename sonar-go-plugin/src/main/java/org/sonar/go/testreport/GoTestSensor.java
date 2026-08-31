@@ -245,9 +245,9 @@ public class GoTestSensor implements Sensor {
     int fail = 0;
     for (TestInfo test : tests) {
       timeMs += test.elapsed * 1000;
-      if (test.action.equals("skip")) {
+      if ("skip".equals(test.action)) {
         skip++;
-      } else if (test.action.equals("fail")) {
+      } else if ("fail".equals(test.action)) {
         fail++;
       }
     }
@@ -280,7 +280,7 @@ public class GoTestSensor implements Sensor {
 
     boolean isRelevant() {
       return action != null && testSanitized != null && pkg != null && elapsed != null &&
-        (action.equals("pass") || action.equals("fail") || action.equals("skip"));
+        ("pass".equals(action) || "fail".equals(action) || "skip".equals(action));
     }
 
     /**
