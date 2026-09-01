@@ -21,6 +21,15 @@ func localVariables() {
    var (
        invalid_local_3 = "test" // Noncompliant
    )
+   var (
+       invalid_local_4 = "test" // Noncompliant
+       invalid_local_5 = "test" // Noncompliant
+       validLocal3     = "test"
+   )
+   const (
+       INVALID_CONST = "1" // Noncompliant
+       validConst    = "1"
+   )
    var INVALID_LOCAL, validLocal int // Noncompliant
  //    ^^^^^^^^^^^^^
    var validLocal, INVALID_LOCAL int // Noncompliant

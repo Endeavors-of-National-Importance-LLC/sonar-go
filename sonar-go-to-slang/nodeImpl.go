@@ -248,11 +248,11 @@ func (t *SlangMapper) mapGenDeclType(decl *ast.GenDecl, fieldName string) *Node 
 func (t *SlangMapper) mapGenDeclImpl(decl *ast.GenDecl, fieldName string) *Node {
 	slangField := make(map[string]interface{})
 
+	isVal := decl.Tok == token.CONST
+
 	switch decl.Tok {
-	case token.CONST:
-		slangField["isVal"] = true
-	case token.VAR:
-		slangField["isVal"] = false
+	case token.CONST, token.VAR:
+		slangField["isVal"] = isVal
 	case token.TYPE:
 		if decl.Lparen == token.NoPos {
 			// token type with parenthesis has no identifier, we map it to Native
@@ -265,7 +265,15 @@ func (t *SlangMapper) mapGenDeclImpl(decl *ast.GenDecl, fieldName string) *Node 
 	}
 
 	if len(decl.Specs) != 1 {
-		//The node can not be mapped to a typed Slang node, create a native node
+		// The node can not be mapped to a single typed Slang node, create a native node; each spec is
+		// mapped to its own VariableDeclaration by mapValueSpecImpl, which needs the "const"/"var" token
+		// this declaration holds. The specs are mapped after this function returns, so recording them here
+		// is enough.
+		for _, spec := range decl.Specs {
+			if valueSpec, isValueSpec := spec.(*ast.ValueSpec); isValueSpec {
+				t.isValBySpec[valueSpec] = isVal
+			}
+		}
 		return nil
 	}
 
@@ -279,6 +287,15 @@ func (t *SlangMapper) mapGenDeclImpl(decl *ast.GenDecl, fieldName string) *Node 
 	children = t.appendNode(children, t.createTokenFromPosAstToken(decl.TokPos, decl.Tok, "Tok"))
 	children = t.appendNode(children, t.createTokenFromPosAstToken(decl.Lparen, token.LPAREN, lParentKind))
 
+	children = t.appendValueSpecNodes(children, valueSpec, slangField)
+
+	children = t.appendNode(children, t.createTokenFromPosAstToken(decl.Rparen, token.RPAREN, rParentKind))
+
+	return t.createNode(decl, children, fieldName+"(GenDecl)", "VariableDeclaration", slangField)
+}
+
+// Maps the identifiers, the type and the initializers of a value specification into "children" and "slangField".
+func (t *SlangMapper) appendValueSpecNodes(children []*Node, valueSpec *ast.ValueSpec, slangField map[string]interface{}) []*Node {
 	var identifiers []*Node
 	for i := 0; i < len(valueSpec.Names); i++ {
 		identifier := t.mapIdent(valueSpec.Names[i], "["+strconv.Itoa(i)+"]")
@@ -301,9 +318,7 @@ func (t *SlangMapper) mapGenDeclImpl(decl *ast.GenDecl, fieldName string) *Node 
 
 	slangField["initializers"] = initializers
 
-	children = t.appendNode(children, t.createTokenFromPosAstToken(decl.Rparen, token.RPAREN, rParentKind))
-
-	return t.createNode(decl, children, fieldName+"(GenDecl)", "VariableDeclaration", slangField)
+	return children
 }
 
 func (t *SlangMapper) mapFieldListParamsImpl(list *ast.FieldList, fieldName string) *Node {
@@ -421,8 +436,15 @@ func (t *SlangMapper) mapTypeSpecImpl(spec *ast.TypeSpec, fieldName string) *Nod
 }
 
 func (t *SlangMapper) mapValueSpecImpl(spec *ast.ValueSpec, fieldName string) *Node {
-	// ValueSpec represents declaration, but they will be mapped inside mapGenDeclImpl to know if the node is a const or not.
-	return nil
+	// A ValueSpec is only reached from mapGenDecl, and only when the declaration holds more than one
+	// specification: a single one is mapped by mapGenDeclImpl, and a declaration that is not a "const" or
+	// a "var" one returns before the recording loop. The spec is therefore always recorded by now.
+	slangField := make(map[string]interface{})
+	slangField["isVal"] = t.isValBySpec[spec]
+
+	children := t.appendValueSpecNodes(nil, spec, slangField)
+
+	return t.createNode(spec, children, fieldName+"(ValueSpec)", "VariableDeclaration", slangField)
 }
 
 func (t *SlangMapper) mapExprImpl(expr ast.Expr, fieldName string) *Node {

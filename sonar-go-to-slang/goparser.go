@@ -193,6 +193,7 @@ type SlangMapper struct {
 	currentCfgId      int32
 	objectToCfgIds    map[any]int32
 	moduleName        string
+	isValBySpec       map[*ast.ValueSpec]bool
 }
 
 func NewSlangMapper(fileSet *token.FileSet, astFile *ast.File, fileContent string, info *types.Info, moduleName string, usesByPos map[token.Pos]types.Object) *SlangMapper {
@@ -207,6 +208,7 @@ func NewSlangMapper(fileSet *token.FileSet, astFile *ast.File, fileContent strin
 		usesByPos:         usesByPos,
 		objectToCfgIds:    make(map[any]int32),
 		moduleName:        moduleName,
+		isValBySpec:       make(map[*ast.ValueSpec]bool),
 	}
 	t.comments = t.mapAllComments()
 	t.commentPos = 0

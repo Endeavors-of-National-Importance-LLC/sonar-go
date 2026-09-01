@@ -80,6 +80,64 @@ class SymbolVisitorTest {
   }
 
   @Test
+  void variablesShouldHaveSymbolsInGroupedDeclarationWithSeveralSpecifications() {
+    var symbols = parseAndGetSymbols("""
+      package main
+      func main() {
+        var (
+          x = 1
+          y = 2
+        )
+        x = 3
+        fmt.Println(y)
+      }
+      """);
+    assertThat(symbols).hasSize(4);
+
+    var x = symbols.get(0);
+    assertThat(x).isSameAs(symbols.get(2));
+    assertThat(x.getType()).isEqualTo(GoNativeType.INT);
+    assertThat(x.getUsages()).extracting("type")
+      .containsExactly(Usage.UsageType.DECLARATION, Usage.UsageType.ASSIGNMENT);
+
+    var declaration = x.getUsages().get(0);
+    assertThat(declaration.identifier().textRange()).hasRange(4, 4, 4, 5);
+    assertThat(declaration.value()).isInstanceOfSatisfying(IntegerLiteralTree.class, integer -> assertThat(integer.value()).isEqualTo("1"));
+
+    var y = symbols.get(1);
+    assertThat(y).isSameAs(symbols.get(3)).isNotSameAs(x);
+    assertThat(y.getUsages()).extracting("type")
+      .containsExactly(Usage.UsageType.DECLARATION, Usage.UsageType.REFERENCE);
+    assertThat(y.getUsages().get(0).value())
+      .isInstanceOfSatisfying(IntegerLiteralTree.class, integer -> assertThat(integer.value()).isEqualTo("2"));
+  }
+
+  @Test
+  void constantsShouldHaveSymbolsInGroupedDeclarationWithSeveralSpecifications() {
+    var symbols = parseAndGetSymbols("""
+      package main
+      func main() {
+        const (
+          a, b = 1, 2
+          c    = 3
+        )
+        fmt.Println(a, b, c)
+      }
+      """);
+    assertThat(symbols).hasSize(6);
+
+    assertThat(symbols.get(0)).isSameAs(symbols.get(3));
+    assertThat(symbols.get(1)).isSameAs(symbols.get(4));
+    assertThat(symbols.get(2)).isSameAs(symbols.get(5));
+    assertThat(symbols.get(0).getUsages()).extracting("type")
+      .containsExactly(Usage.UsageType.DECLARATION, Usage.UsageType.REFERENCE);
+    assertThat(symbols.get(1).getUsages().get(0).value())
+      .isInstanceOfSatisfying(IntegerLiteralTree.class, integer -> assertThat(integer.value()).isEqualTo("2"));
+    assertThat(symbols.get(2).getUsages().get(0).value())
+      .isInstanceOfSatisfying(IntegerLiteralTree.class, integer -> assertThat(integer.value()).isEqualTo("3"));
+  }
+
+  @Test
   void shouldProperlyTrackMultipleAssignment() {
     var symbols = parseAndGetSymbols("""
       package main

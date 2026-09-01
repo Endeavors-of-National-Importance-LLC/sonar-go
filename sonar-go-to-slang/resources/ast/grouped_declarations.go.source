@@ -1,0 +1,58 @@
+package ast
+
+const singleConst = "a"
+
+const (
+	oneEntryGroup = "b"
+)
+
+const (
+	firstOfTwo  = "c"
+	secondOfTwo = "d"
+)
+
+const (
+	firstIota = iota
+	secondIota
+	thirdIota
+)
+
+const (
+	typedConst   float64 = 1.5
+	twoNames, ok         = 2, true
+)
+
+var (
+	varFirst  = "e"
+	varSecond = "f"
+)
+
+var (
+	varWithoutValue    int
+	varTwoNames, varOk = 3, false
+)
+
+func groupedInFunction() {
+	const (
+		localFirst  = "g"
+		localSecond = "h"
+	)
+	var (
+		localVarFirst  = "i"
+		localVarSecond = "j"
+	)
+	_, _, _, _ = localFirst, localSecond, localVarFirst, localVarSecond
+}
+
+// A specification whose value holds a declaration of its own: the inner block must not disturb the
+// outer one, whose remaining specifications are mapped after it.
+var (
+	nestedOuter = func() int {
+		const (
+			nestedFirst  = 1
+			nestedSecond = 2
+		)
+		return nestedFirst + nestedSecond
+	}()
+	nestedSibling = 3
+)

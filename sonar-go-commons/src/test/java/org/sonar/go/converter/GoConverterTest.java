@@ -58,6 +58,7 @@ import org.sonar.plugins.go.api.cfg.ControlFlowGraph;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.from;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
@@ -296,6 +297,38 @@ class GoConverterTest {
       arguments("a := 1                ", List.of("a"), List.of(Result.LITERAL_ONE), null, false),
       arguments("a, b := foo()         ", List.of("a", "b"), List.of(Result.METHOD_FOO), null, false),
       arguments("a, b := 1, 2          ", List.of("a", "b"), List.of(Result.LITERAL_ONE, Result.LITERAL_TWO), null, false));
+  }
+
+  @Test
+  void testParseGroupedVariableDeclaration() {
+    Tree tree = TestGoConverterSingleFile.parse("""
+      package main
+      const (
+        a    = 1
+        b, c = 1, 2
+      )
+      var (
+        d int
+        e     = 1
+      )
+      const (
+        f = iota
+        g
+      )
+      """);
+
+    assertThat(tree.descendants().filter(VariableDeclarationTree.class::isInstance).map(VariableDeclarationTree.class::cast))
+      .extracting(
+        declaration -> declaration.identifiers().stream().map(IdentifierTree::name).toList(),
+        declaration -> declaration.initializers().size(),
+        VariableDeclarationTree::isVal)
+      .containsExactly(
+        tuple(List.of("a"), 1, true),
+        tuple(List.of("b", "c"), 2, true),
+        tuple(List.of("d"), 0, false),
+        tuple(List.of("e"), 1, false),
+        tuple(List.of("f"), 1, true),
+        tuple(List.of("g"), 0, true));
   }
 
   @ParameterizedTest
