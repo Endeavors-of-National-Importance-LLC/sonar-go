@@ -18,10 +18,13 @@ package org.sonar.go.utils;
 
 import java.math.BigInteger;
 import java.util.Collections;
+import java.util.concurrent.TimeUnit;
 import javax.annotation.Nullable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.sonar.go.impl.ParenthesizedExpressionTreeImpl;
 import org.sonar.go.impl.StringLiteralTreeImpl;
 import org.sonar.go.impl.TextRangeImpl;
@@ -29,7 +32,6 @@ import org.sonar.go.impl.TokenImpl;
 import org.sonar.go.persistence.conversion.StringNativeKind;
 import org.sonar.go.symbols.Symbol;
 import org.sonar.go.symbols.Usage;
-import org.sonar.go.testing.TestGoConverterSingleFile;
 import org.sonar.go.visitors.SymbolVisitor;
 import org.sonar.go.visitors.TreeContext;
 import org.sonar.plugins.go.api.AssignmentExpressionTree;
@@ -38,7 +40,6 @@ import org.sonar.plugins.go.api.FunctionDeclarationTree;
 import org.sonar.plugins.go.api.IdentifierTree;
 import org.sonar.plugins.go.api.NativeTree;
 import org.sonar.plugins.go.api.Token;
-import org.sonar.plugins.go.api.TopLevelTree;
 import org.sonar.plugins.go.api.Tree;
 import org.sonar.plugins.go.api.VariableDeclarationTree;
 
@@ -222,7 +223,7 @@ class ConstantResolutionTest {
 
   @Test
   void shouldHandleRecursiveAssignments() {
-    var root = (TopLevelTree) TestGoConverterSingleFile.parse("""
+    var root = parseFile("""
       package main
       func main() {
         a := "a"
@@ -244,7 +245,7 @@ class ConstantResolutionTest {
 
   @Test
   void shouldNotGoIntoInfiniteRecursionToResolveConstant() {
-    var root = (TopLevelTree) TestGoConverterSingleFile.parse("""
+    var root = parseFile("""
       package main
       func main(a string) {
         var b string
@@ -264,6 +265,68 @@ class ConstantResolutionTest {
       var result = ConstantResolution.resolveAsStringConstant(refB);
       assertThat(result).isNull();
     });
+  }
+
+  /**
+   * Resolving a self-reference more than once per level grows both the string built and the number of nodes to visit
+   * exponentially with the levels of identifier resolution: three self-references are 3^19 identifiers to resolve,
+   * which used to end in {@code OutOfMemoryError: Overflow: String length out of range} and, once the length alone was
+   * bounded, in over a minute of work. Four are past 4^19, so the budgets have to make the shape of the tree
+   * irrelevant.
+   */
+  @ParameterizedTest
+  @ValueSource(strings = {
+    "s + \"\" + s + \"\"",
+    "s + \"\" + s + \"\" + s + \"\"",
+    "s + \"\" + s + \"\" + s + \"\" + s + \"\"",
+  })
+  @Timeout(value = 10, unit = TimeUnit.SECONDS)
+  void shouldNotGrowExponentiallyOnSelfReferentialConcatenation(String selfReferentialValue) {
+    var root = parseFile("""
+      package main
+      func main() {
+        var s string
+        s = %s
+      }
+      """.formatted(selfReferentialValue));
+
+    TreeContext ctx = new TreeContext();
+    new SymbolVisitor<>().scan(ctx, root);
+
+    var body = ((FunctionDeclarationTree) root.declarations().get(1)).body();
+    var refS = ((AssignmentExpressionTree) body.statementOrExpressions().get(1)).leftHandSide();
+
+    var partial = ConstantResolution.resolveAsPartialStringConstant(refS);
+    assertThat(partial).contains(ConstantResolution.PLACEHOLDER);
+    assertThat(partial.length()).isLessThan(8192);
+    assertThat(ConstantResolution.resolveAsStringConstant(refS)).isNull();
+  }
+
+  /**
+   * Doubling a long constant costs only a handful of steps, so the step budget cannot stop it; only
+   * {@link ConstantResolution} bounding the length of what it concatenates keeps the result from being twice the cap.
+   * This is what tells the two budgets apart.
+   */
+  @Test
+  void shouldGiveUpOnAConcatenationLongerThanTheCap() {
+    var longText = "x".repeat(9000);
+    var root = parseFile("""
+      package main
+      const longText = "%s"
+      func main() {
+        var x string
+        x = longText + longText
+      }
+      """.formatted(longText));
+
+    TreeContext ctx = new TreeContext();
+    new SymbolVisitor<>().scan(ctx, root);
+
+    var body = ((FunctionDeclarationTree) root.declarations().get(2)).body();
+    var refX = ((AssignmentExpressionTree) body.statementOrExpressions().get(1)).leftHandSide();
+
+    assertThat(ConstantResolution.resolveAsPartialStringConstant(refX)).isEqualTo(ConstantResolution.PLACEHOLDER);
+    assertThat(ConstantResolution.resolveAsStringConstant(refX)).isNull();
   }
 
   @Test
@@ -302,7 +365,7 @@ class ConstantResolutionTest {
 
   @Test
   void functionParametersShouldNotBeConsideredEffectivelyFinalAndResolved() {
-    var topLevelTree = ParseUtils.parseFile("""
+    var topLevelTree = parseFile("""
       package main
       func main(a string) {
         a = "value"
@@ -354,4 +417,29 @@ class ConstantResolutionTest {
 
     assertThat(ConstantResolution.evaluateArithmeticExpression(treeX)).isEqualTo(BigInteger.valueOf(8));
   }
+
+  /**
+   * A self-referential value, e.g. {@code n = n + 1}, used to recurse until the stack was exhausted; {@code n = n + n}
+   * branched at every level on top of that. Reachable in production through S5344, which evaluates the cost arguments
+   * of the password hashing functions.
+   */
+  @ParameterizedTest
+  @ValueSource(strings = {"n + 1", "n + n"})
+  @Timeout(value = 10, unit = TimeUnit.SECONDS)
+  void shouldNotOverflowTheStackOnSelfReferentialArithmetic(String selfReferentialValue) {
+    var tree = parseFile("""
+      package main
+      func main() {
+        var n int
+        n = %s
+      }
+      """.formatted(selfReferentialValue));
+    var ctx = new TreeContext();
+    new SymbolVisitor<>().scan(ctx, tree);
+    var mainFunc = (FunctionDeclarationTree) tree.declarations().get(1);
+    var assignment = (AssignmentExpressionTree) mainFunc.body().statementOrExpressions().get(1);
+
+    assertThat(ConstantResolution.evaluateArithmeticExpression(assignment.leftHandSide())).isNull();
+  }
+
 }
