@@ -79,10 +79,10 @@ public class ExternalKeyUtils {
   public static final List<ExternalKey> GO_LINT_KEYS = List.of(
     new ExternalKey("PackageComment", msg -> msg.startsWith("package comment should be of the form") ||
       msg.startsWith("package comment should not have leading space") ||
-      msg.equals("package comment is detached; there should be no blank lines between it and the package statement") ||
-      msg.equals("should have a package comment, unless it's in another file for this package")),
-    new ExternalKey("BlankImports", msg -> msg.equals("a blank import should be only in a main or test package, or have a comment justifying it")),
-    new ExternalKey("Imports", msg -> msg.equals("should not use dot imports")),
+      "package comment is detached; there should be no blank lines between it and the package statement".equals(msg) ||
+      "should have a package comment, unless it's in another file for this package".equals(msg)),
+    new ExternalKey("BlankImports", "a blank import should be only in a main or test package, or have a comment justifying it"::equals),
+    new ExternalKey("Imports", "should not use dot imports"::equals),
     new ExternalKey("Exported", msg -> (msg.startsWith("exported") && msg.endsWith("or be unexported")) ||
       msg.startsWith("comment on exported") ||
       msg.endsWith("should have its own declaration") ||
@@ -92,7 +92,7 @@ public class ExternalKeyUtils {
     new ExternalKey("Ranges", msg -> msg.contains("from range; this loop is equivalent to")),
     new ExternalKey("Errorf", msg -> msg.contains("(fmt.Sprintf(...)) with") && msg.contains(".Errorf(...)")),
     new ExternalKey("Errors", msg -> msg.startsWith("error var ") && msg.contains("should have name of the form ")),
-    new ExternalKey("ErrorStrings", msg -> msg.equals("error strings should not be capitalized or end with punctuation or a newline")),
+    new ExternalKey("ErrorStrings", "error strings should not be capitalized or end with punctuation or a newline"::equals),
     new ExternalKey("ReceiverNames", msg -> msg.contains("should be consistent with previous receiver name") ||
       msg.startsWith("receiver name should not be an underscore") ||
       msg.equals("receiver name should be a reflection of its identity; don't use generic names such as \"this\" or \"self\"")),
@@ -101,7 +101,7 @@ public class ExternalKeyUtils {
     new ExternalKey("UnexportedReturn", msg -> msg.contains("returns unexported type") && msg.endsWith("which can be annoying to use")),
     new ExternalKey("TimeNames", msg -> msg.contains("don't use unit-specific suffix")),
     new ExternalKey("ContextKeyTypes", msg -> msg.startsWith("should not use basic type") && msg.endsWith("as key in context.WithValue")),
-    new ExternalKey("ContextArgs", msg -> msg.equals("context.Context should be the first parameter of a function")),
+    new ExternalKey("ContextArgs", "context.Context should be the first parameter of a function"::equals),
     new ExternalKey("Names", msg -> msg.startsWith("don't use an underscore in package name") ||
       msg.startsWith("don't use ALL_CAPS in Go names; use CamelCase") ||
       msg.startsWith("don't use leading k in Go names;") ||
