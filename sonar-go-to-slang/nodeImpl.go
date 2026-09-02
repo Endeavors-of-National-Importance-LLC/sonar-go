@@ -63,6 +63,9 @@ func (t *SlangMapper) mapIdentImpl(ident *ast.Ident, fieldName string) *Node {
 	var children []*Node
 	switch ident.Name {
 	case "true", "false", "nil":
+		if t.isShadowedPredeclared(ident) {
+			return t.createIdentifier(ident, fieldName)
+		}
 		slangType = "Literal"
 		slangField["value"] = ident.Name
 	case "_":
@@ -71,17 +74,58 @@ func (t *SlangMapper) mapIdentImpl(ident *ast.Ident, fieldName string) *Node {
 		children = t.appendNode(children, placeHolderToken)
 		slangField["placeHolderToken"] = placeHolderToken.TextRange
 	default:
-		slangType = "Identifier"
-		slangField["name"] = ident.Name
-		if t.info != nil {
-			identifierInfo := t.getIdentifierInfo(ident)
-			slangField["id"] = identifierInfo.Id
-			slangField["type"] = identifierInfo.Type
-			slangField["package"] = identifierInfo.Package
-		}
+		return t.createIdentifier(ident, fieldName)
 	}
 
 	return t.createNode(ident, children, fieldName+"(Ident)", slangType, slangField)
+}
+
+// Whether a read of "true", "false" or "nil" reads a declaration of the user rather than the one of the
+// universe block. Needs the type information; without it usesByPos is empty and the predeclared meaning
+// is assumed. A name being declared never comes here, mapName maps it without needing types.
+func (t *SlangMapper) isShadowedPredeclared(ident *ast.Ident) bool {
+	obj, isUse := t.usesByPos[ident.NamePos]
+	return isUse && obj != nil && obj.Parent() != types.Universe
+}
+
+func (t *SlangMapper) createIdentifier(ident *ast.Ident, fieldName string) *Node {
+	slangField := make(map[string]interface{})
+	slangField["name"] = ident.Name
+	if t.info != nil {
+		identifierInfo := t.getIdentifierInfo(ident)
+		slangField["id"] = identifierInfo.Id
+		slangField["type"] = identifierInfo.Type
+		slangField["package"] = identifierInfo.Package
+	}
+
+	return t.createNode(ident, nil, fieldName+"(Ident)", "Identifier", slangField)
+}
+
+// Maps a list of names. Called by the generated mapField and mapFieldResult, which the "Field#Names" and
+// "FieldResult#Names" overrides of generate_source.go route here: struct fields, interface methods and
+// named results all hold names.
+func (t *SlangMapper) mapNames(idents []*ast.Ident) []*Node {
+	var names []*Node
+	for i := 0; i < len(idents); i++ {
+		names = t.appendNode(names, t.mapName(idents[i], "["+strconv.Itoa(i)+"]"))
+	}
+	return names
+}
+
+// Maps an identifier that names something rather than reads a value. "true", "false" and "nil" are
+// predeclared identifiers Go lets a program redeclare, and mapIdentImpl maps them to a literal, which a
+// name must never be.
+func (t *SlangMapper) mapName(ident *ast.Ident, fieldName string) *Node {
+	if ident == nil {
+		// The name is optional in some positions, e.g. an import without an alias or a bare "break"
+		return nil
+	}
+	switch ident.Name {
+	case "true", "false", "nil":
+		return t.createIdentifier(ident, fieldName)
+	default:
+		return t.mapIdent(ident, fieldName)
+	}
 }
 
 func (t *SlangMapper) mapFileImpl(file *ast.File, fieldName string) *Node {
@@ -123,7 +167,7 @@ func (t *SlangMapper) mapFuncDeclImpl(decl *ast.FuncDecl, fieldName string) *Nod
 	children = t.appendNode(children, receiver)
 	slangField["receiver"] = receiver
 
-	funcName := t.mapIdent(decl.Name, "Name")
+	funcName := t.mapName(decl.Name, "Name")
 	children = t.appendNode(children, funcName)
 	slangField["name"] = funcName
 
@@ -228,7 +272,7 @@ func (t *SlangMapper) mapGenDeclType(decl *ast.GenDecl, fieldName string) *Node 
 	children = t.appendNode(children, t.createTokenFromPosAstToken(decl.TokPos, decl.Tok, "Tok"))
 	children = t.appendNode(children, t.createTokenFromPosAstToken(decl.Lparen, token.LPAREN, lParentKind))
 
-	specName := t.mapIdent(spec.Name, "Name")
+	specName := t.mapName(spec.Name, "Name")
 	children = t.appendNode(children, specName)
 	slangField[identifierField] = specName.TextRange
 
@@ -255,9 +299,10 @@ func (t *SlangMapper) mapGenDeclImpl(decl *ast.GenDecl, fieldName string) *Node 
 		slangField["isVal"] = isVal
 	case token.TYPE:
 		if decl.Lparen == token.NoPos {
-			// token type with parenthesis has no identifier, we map it to Native
 			return t.mapGenDeclType(decl, fieldName)
 		} else {
+			// a parenthesized type declaration has no identifier of its own, it stays native and each of its
+			// specifications is mapped by the generated mapTypeSpec
 			return nil
 		}
 	case token.IMPORT:
@@ -298,7 +343,7 @@ func (t *SlangMapper) mapGenDeclImpl(decl *ast.GenDecl, fieldName string) *Node 
 func (t *SlangMapper) appendValueSpecNodes(children []*Node, valueSpec *ast.ValueSpec, slangField map[string]interface{}) []*Node {
 	var identifiers []*Node
 	for i := 0; i < len(valueSpec.Names); i++ {
-		identifier := t.mapIdent(valueSpec.Names[i], "["+strconv.Itoa(i)+"]")
+		identifier := t.mapName(valueSpec.Names[i], "["+strconv.Itoa(i)+"]")
 		identifiers = append(identifiers, identifier)
 		children = t.appendNode(children, identifier)
 	}
@@ -388,11 +433,11 @@ func (t *SlangMapper) mapFieldParamImpl(field *ast.Field, fieldName string) *Nod
 	//Go parameter can share the type with multiple identifier ex: f(a, b int)
 	//We will create a parameter node without type for the firsts and with type for the last
 	for i := 0; i < nNames-1; i++ {
-		paramterIdent := t.mapIdent(field.Names[i], fieldName+"["+strconv.Itoa(i)+"]")
+		paramterIdent := t.mapName(field.Names[i], fieldName+"["+strconv.Itoa(i)+"]")
 		parameter := t.createParameter(field.Names[i], paramterIdent, nil, fieldName)
 		children = t.appendNode(children, parameter)
 	}
-	lastParameterIdent := t.mapIdent(field.Names[nNames-1], fieldName+"["+strconv.Itoa(nNames-1)+"]")
+	lastParameterIdent := t.mapName(field.Names[nNames-1], fieldName+"["+strconv.Itoa(nNames-1)+"]")
 	lastParameterType := t.mapExpr(field.Type, "Type")
 
 	lastParameter := t.createParameter(field.Names[nNames-1], lastParameterIdent, lastParameterType, fieldName)
@@ -420,7 +465,7 @@ func (t *SlangMapper) mapImportSpecImpl(spec *ast.ImportSpec, fieldName string) 
 	slangField := make(map[string]interface{})
 	var children []*Node
 
-	name := t.mapIdent(spec.Name, "Name")
+	name := t.mapName(spec.Name, "Name")
 	children = t.appendNode(children, name)
 	slangField["name"] = name
 
@@ -530,6 +575,14 @@ func (t *SlangMapper) mapLeftRightHandSide(exprs []ast.Expr) *Node {
 	return handSideWrapper
 }
 
+// The left-hand side of a short variable declaration only holds names.
+func (t *SlangMapper) mapShortDeclarationName(expr ast.Expr, fieldName string) *Node {
+	if ident, isIdent := expr.(*ast.Ident); isIdent {
+		return t.mapName(ident, fieldName)
+	}
+	return t.mapExpr(expr, fieldName)
+}
+
 func (t *SlangMapper) createVariableDeclaration(stmt *ast.AssignStmt, fieldName string) *Node {
 	slangField := make(map[string]interface{})
 	var children []*Node
@@ -537,7 +590,7 @@ func (t *SlangMapper) createVariableDeclaration(stmt *ast.AssignStmt, fieldName 
 	slangField["isVal"] = false
 	var identifiers []*Node
 	for i := 0; i < len(stmt.Lhs); i++ {
-		identifier := t.mapExpr(stmt.Lhs[i], "["+strconv.Itoa(i)+"]")
+		identifier := t.mapShortDeclarationName(stmt.Lhs[i], "["+strconv.Itoa(i)+"]")
 		identifiers = append(identifiers, identifier)
 		children = t.appendNode(children, identifier)
 	}
@@ -581,7 +634,7 @@ func (t *SlangMapper) mapBranchStmtImpl(stmt *ast.BranchStmt, fieldName string) 
 	slangField[keywordField] = branchToken.TextRange
 	slangField["kind"] = jumpKind
 
-	label := t.mapIdent(stmt.Label, "Label")
+	label := t.mapName(stmt.Label, "Label")
 	children = t.appendNode(children, label)
 	slangField["label"] = label
 
@@ -787,8 +840,14 @@ func (t *SlangMapper) mapRangeStmtImpl(stmt *ast.RangeStmt, fieldName string) *N
 
 	var rangeHeaderList []*Node
 
-	rangeHeaderList = t.appendNode(rangeHeaderList, t.mapExpr(stmt.Key, "Key"))
-	rangeHeaderList = t.appendNode(rangeHeaderList, t.mapExpr(stmt.Value, "Value"))
+	if stmt.Tok == token.DEFINE {
+		// the key and the value of a ":=" range only hold names
+		rangeHeaderList = t.appendNode(rangeHeaderList, t.mapShortDeclarationName(stmt.Key, "Key"))
+		rangeHeaderList = t.appendNode(rangeHeaderList, t.mapShortDeclarationName(stmt.Value, "Value"))
+	} else {
+		rangeHeaderList = t.appendNode(rangeHeaderList, t.mapExpr(stmt.Key, "Key"))
+		rangeHeaderList = t.appendNode(rangeHeaderList, t.mapExpr(stmt.Value, "Value"))
+	}
 	rangeHeaderList = t.appendNode(rangeHeaderList, t.createTokenFromPosAstToken(stmt.TokPos, stmt.Tok, "Tok"))
 	rangeHeaderList = t.appendNode(rangeHeaderList, t.mapExpr(stmt.X, "X"))
 
@@ -1164,7 +1223,7 @@ func (t *SlangMapper) mapSelectorExprImpl(expr *ast.SelectorExpr, fieldName stri
 	children = t.appendNode(children, expression)
 	slangField["expression"] = expression
 
-	identifier := t.mapIdent(expr.Sel, "Sel")
+	identifier := t.mapName(expr.Sel, "Sel")
 	children = t.appendNode(children, identifier)
 	slangField["identifier"] = identifier
 

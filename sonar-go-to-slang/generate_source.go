@@ -87,6 +87,13 @@ import (
 			"ChanType#Dir":      "",
 			"ImportSpec#EndPos": "",
 			"FuncTypeDecl#Func": "",
+			// The fields below hold a name, and "true", "false" and "nil" are predeclared identifiers a
+			// program may redeclare, so they are mapped with mapName rather than with mapIdent: mapIdent
+			// maps those three to a literal, which a name must never be.
+			"TypeSpec#Name":     "children = t.appendNode(children, t.mapName(astNode.Name, \"Name\"))",
+			"LabeledStmt#Label": "children = t.appendNode(children, t.mapName(astNode.Label, \"Label\"))",
+			"Field#Names":       "children = t.appendNodeList(children, t.mapNames(astNode.Names), \"Names([]*Ident)\")",
+			"FieldResult#Names": "children = t.appendNodeList(children, t.mapNames(astNode.Names), \"Names([]*Ident)\")",
 		},
 		ForceLeafNode: map[string]bool{
 			// Fields from the given struct types are ignored, this produce terminal node with token

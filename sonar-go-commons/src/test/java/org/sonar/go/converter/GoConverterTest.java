@@ -40,6 +40,7 @@ import org.sonar.plugins.go.api.ImportDeclarationTree;
 import org.sonar.plugins.go.api.ImportSpecificationTree;
 import org.sonar.plugins.go.api.IntegerLiteralTree;
 import org.sonar.plugins.go.api.KeyValueTree;
+import org.sonar.plugins.go.api.LiteralTree;
 import org.sonar.plugins.go.api.LoopTree;
 import org.sonar.plugins.go.api.MemberSelectTree;
 import org.sonar.plugins.go.api.NativeTree;
@@ -329,6 +330,84 @@ class GoConverterTest {
         tuple(List.of("e"), 1, false),
         tuple(List.of("f"), 1, true),
         tuple(List.of("g"), 0, true));
+  }
+
+  /**
+   * "true", "false" and "nil" are predeclared identifiers Go lets a program redeclare. Where they name something they
+   * are identifiers; a literal in a field holding a name fails the conversion of the whole file.
+   */
+  @Test
+  void testParseDeclarationOfPredeclaredName() {
+    Tree tree = TestGoConverterSingleFile.parse("""
+      package main
+      const (
+        nil   = 1
+        false = 2
+      )
+      var true = 3
+      func main() {
+        false := 4
+        _ = false
+      }
+      """);
+
+    assertThat(tree.descendants().filter(VariableDeclarationTree.class::isInstance).map(VariableDeclarationTree.class::cast))
+      .flatExtracting(declaration -> declaration.identifiers().stream().map(IdentifierTree::name).toList())
+      .containsExactly("nil", "false", "true", "false");
+  }
+
+  /**
+   * A read of a name that has been redeclared is that name, not the predeclared value it hides. Resolving it needs
+   * the type information; a name being declared never does.
+   */
+  @Test
+  void testParseReadOfShadowedPredeclaredName() {
+    Tree tree = TestGoConverterSingleFile.parse("""
+      package main
+      func foo(true bool) {
+        fmt.Println("Bool value:", true)
+      }
+      func bar() {
+        fmt.Println("Bool value:", true)
+      }
+      """);
+
+    var reads = tree.descendants()
+      .filter(FunctionInvocationTree.class::isInstance)
+      .map(FunctionInvocationTree.class::cast)
+      .map(invocation -> invocation.arguments().get(1))
+      .toList();
+    // the parameter shadows the predeclared "true"
+    assertThat(reads.get(0)).isInstanceOfSatisfying(IdentifierTree.class, identifier -> assertThat(identifier.name()).isEqualTo("true"));
+    // nothing shadows it here
+    assertThat(reads.get(1)).isInstanceOfSatisfying(LiteralTree.class, literal -> assertThat(literal.value()).isEqualTo("true"));
+  }
+
+  /** A name is held by many trees other than a variable declaration, all of them typed as an identifier. */
+  @Test
+  void testParseNamesOtherThanVariablesOfPredeclaredName() {
+    Tree tree = TestGoConverterSingleFile.parse("""
+      package main
+      import nil "fmt"
+      type false int
+      type shadowed struct{ true int }
+      func read(nil shadowed) int {
+        return nil.true
+      }
+      """);
+
+    assertThat(tree.descendants().filter(ImportSpecificationTree.class::isInstance).map(ImportSpecificationTree.class::cast))
+      .extracting(importSpecification -> importSpecification.name().name())
+      .containsExactly("nil");
+    assertThat(tree.descendants().filter(ClassDeclarationTree.class::isInstance).map(ClassDeclarationTree.class::cast))
+      .extracting(classDeclaration -> classDeclaration.identifier().name())
+      .containsExactly("false", "shadowed");
+    assertThat(tree.descendants().filter(ParameterTree.class::isInstance).map(ParameterTree.class::cast))
+      .extracting(parameter -> parameter.identifier().name())
+      .containsExactly("nil");
+    assertThat(tree.descendants().filter(MemberSelectTree.class::isInstance).map(MemberSelectTree.class::cast))
+      .extracting(memberSelect -> memberSelect.identifier().name())
+      .containsExactly("true");
   }
 
   @ParameterizedTest

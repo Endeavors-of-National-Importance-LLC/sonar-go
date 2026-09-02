@@ -1,0 +1,71 @@
+package ast
+
+// "true", "false" and "nil" are predeclared identifiers Go lets a program redeclare. Where they name something
+// they are identifiers, and so is a read of a redeclared name; only a read of the predeclared value is a literal.
+// They live in their own file: declaring them at package scope would change the meaning of every case sharing it.
+
+const (
+	nil   = 1
+	false = 2
+)
+
+func true() {}
+
+type shadowedFields struct {
+	nil   int
+	false string
+}
+
+// A grouped type specification stays native, unlike a single "type X int" or a grouped const or var
+// specification; only its name goes through mapName.
+func groupedTypeNames() {
+	type (
+		nil   int
+		false string
+	)
+	var value nil
+	_ = value
+}
+
+// "iota" is an identifier wherever it appears, mapIdentImpl never mapped it to a literal. Declaring it
+// stays inside a function: at package scope the const block below could no longer count with it.
+const (
+	iotaFirst = iota
+	iotaSecond
+)
+
+func shadowedIota() {
+	var iota = 5
+	_ = iota
+}
+
+func shadowedIotaShortDeclaration() {
+	iota := 7
+	_ = iota
+}
+
+func rangedNames(s []int) {
+	for nil := range s {
+		_ = nil
+	}
+	for nil, false := range s {
+		_, _ = nil, false
+	}
+}
+
+func namedResult() (nil int) {
+	return 0
+}
+
+func shadowedNames(nil int, false string) {
+	var true = 3
+	_ = true
+	{
+		nil := 4
+		_ = nil
+	}
+false:
+	for {
+		break false
+	}
+}

@@ -263,7 +263,7 @@ func (t *SlangMapper) mapPackageDecl(file *ast.File) *Node {
 		children = t.appendCommentOrMissingToken(children, 0, packageNode.offset)
 		children = append(children, packageNode)
 	}
-	children = t.appendNode(children, t.mapIdent(file.Name, "Name"))
+	children = t.appendNode(children, t.mapName(file.Name, "Name"))
 
 	slangField := make(map[string]interface{})
 	slangField[childrenField] = t.filterOutComments(children)
