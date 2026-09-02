@@ -45,7 +45,7 @@ public class IntegerLiteralTreeImpl extends LiteralTreeImpl implements IntegerLi
     } else if (hasExplicitOctalPrefix(stringValue)) {
       base = IntegerLiteralTree.Base.OCTAL;
       numeric = stringValue.substring(2);
-    } else if (!stringValue.equals("0") && stringValue.startsWith("0")) {
+    } else if (!"0".equals(stringValue) && stringValue.startsWith("0")) {
       base = IntegerLiteralTree.Base.OCTAL;
       numeric = stringValue.substring(1);
     } else {

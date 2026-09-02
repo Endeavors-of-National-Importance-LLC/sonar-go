@@ -39,7 +39,7 @@ import org.sonar.plugins.go.api.checks.InitContext;
 public class ElseIfWithoutElseCheck implements GoCheck {
 
   private static final String MESSAGE = "Add the missing \"else\" clause.";
-  private static final Predicate<Tree> IS_IDENTIFIER_PANIC = tree -> tree instanceof IdentifierTree identifierTree && identifierTree.name().equals("panic");
+  private static final Predicate<Tree> IS_IDENTIFIER_PANIC = tree -> tree instanceof IdentifierTree identifierTree && "panic".equals(identifierTree.name());
 
   @Override
   public void initialize(InitContext init) {

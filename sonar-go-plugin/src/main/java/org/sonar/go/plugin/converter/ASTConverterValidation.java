@@ -78,9 +78,9 @@ public class ASTConverterValidation implements ASTConverter {
     String mode = configuration.get("sonar.go.converter.validation").orElse(null);
     if (mode == null) {
       return converter;
-    } else if (mode.equals("throw")) {
+    } else if ("throw".equals(mode)) {
       return new ASTConverterValidation(converter, ValidationMode.THROW_EXCEPTION);
-    } else if (mode.equals("log")) {
+    } else if ("log".equals(mode)) {
       return new ASTConverterValidation(converter, ValidationMode.LOG_ERROR);
     } else {
       LOG.warn("Unsupported mode for converter validation: '{}', falling back to no validation", mode);
